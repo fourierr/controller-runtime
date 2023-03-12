@@ -285,15 +285,18 @@ func (ip *Informers) get(gvk schema.GroupVersionKind, obj runtime.Object) (res *
 // Get will create a new Informer and add it to the map of specificInformersMap if none exists.  Returns
 // the Informer from the map.
 func (ip *Informers) Get(ctx context.Context, gvk schema.GroupVersionKind, obj runtime.Object) (bool, *Cache, error) {
+	// Cache(Informer) 保存在一个以 GVK 为 key 的 map 中, 如果找到匹配的 Informer，则直接返回
 	// Return the informer if it is found
 	i, started, ok := ip.get(gvk, obj)
+	// 如果找不到，则创建一个新的 Informer
 	if !ok {
 		var err error
 		if i, started, err = ip.addInformerToMap(gvk, obj); err != nil {
 			return started, nil, err
 		}
 	}
-
+	// addInformerToMap 中启动了一个 Informer，这里必须等待 Informer HasSynced，否则将一直阻塞
+	// 必须所有 syncFunc 方法都返回 true 才结束阻塞
 	if started && !i.Informer.HasSynced() {
 		// Wait for it to sync before returning the Informer so that folks don't read from a stale cache.
 		if !cache.WaitForCacheSync(ctx.Done(), i.Informer.HasSynced) {
@@ -326,11 +329,13 @@ func (ip *Informers) addInformerToMap(gvk schema.GroupVersionKind, obj runtime.O
 		return i, ip.started, nil
 	}
 
+	// 创建 ListWatcher
 	// Create a NewSharedIndexInformer and add it to the map.
 	listWatcher, err := ip.makeListWatcher(gvk, obj)
 	if err != nil {
 		return nil, false, err
 	}
+	// 新建一个 client-go 封装的 SharedIndexInformer，即 Informer 最常用（几乎唯一）的实现
 	sharedIndexInformer := cache.NewSharedIndexInformer(&cache.ListWatch{
 		ListFunc: func(opts metav1.ListOptions) (runtime.Object, error) {
 			ip.getSelector(gvk).ApplyToList(&opts)
@@ -358,6 +363,7 @@ func (ip *Informers) addInformerToMap(gvk schema.GroupVersionKind, obj runtime.O
 	// Create the new entry and set it in the map.
 	i := &Cache{
 		Informer: sharedIndexInformer,
+		// 把 Informer 关联的 Indexer 对接到 Get/List 方法上，从而读取其中缓存对象
 		Reader: CacheReader{
 			indexer:          sharedIndexInformer.GetIndexer(),
 			groupVersionKind: gvk,
@@ -365,10 +371,12 @@ func (ip *Informers) addInformerToMap(gvk schema.GroupVersionKind, obj runtime.O
 			disableDeepCopy:  ip.getDisableDeepCopy(gvk),
 		},
 	}
+	// 将新建的 Informer 保存到一个以 GVK 为 key 的 map 中，供后续复用
 	ip.informersByType(obj)[gvk] = i
 
 	// Start the informer in case the InformersMap has started, otherwise it will be
 	// started when the InformersMap starts.
+	// 启动 Informer
 	if ip.started {
 		ip.startInformerLocked(i.Informer)
 	}

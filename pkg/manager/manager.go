@@ -122,6 +122,8 @@ type Options struct {
 	//
 	// NOTE: LOW LEVEL PRIMITIVE!
 	// Only use a custom NewCache if you know what you are doing.
+	// NewCache 接口定义了 2 个功能，一是维护一组 Informer，每个 Informer 持续监听（ListAndWatch）某一类（GVK） K8s 对象的资源事件，
+	// 并按照特定的索引计算方式，将对象数据存储在本地缓存中；二是提供 Get/List 方法以读取 Informers 缓存的 K8s 对象。
 	NewCache cache.NewCacheFunc
 
 	// Client is the client.Options that will be used to create the default Client.
@@ -381,6 +383,7 @@ type LeaderElectionRunnable interface {
 }
 
 // New returns a new Manager for creating Controllers.
+// ControllerManager 正如其名，它会负责管理一个或多个控制器，其中一项重要工作就是初始化一个 K8s Client，在创建 CtrMgr 的方法参数中，ctrl.Options 包含了 2 个重要配置项：新建 Cache 与 新建 Client。
 func New(config *rest.Config, options Options) (Manager, error) {
 	// Set default values for options fields
 	options = setOptionsDefaults(options)

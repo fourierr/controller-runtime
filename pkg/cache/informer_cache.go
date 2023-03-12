@@ -54,11 +54,12 @@ type informerCache struct {
 
 // Get implements Reader.
 func (ic *informerCache) Get(ctx context.Context, key client.ObjectKey, out client.Object, opts ...client.GetOption) error {
+	// 从传入对象中获取 GVK
 	gvk, err := apiutil.GVKForObject(out, ic.scheme)
 	if err != nil {
 		return err
 	}
-
+	// 基于 GVK 去查找 Cache(Informer)
 	started, cache, err := ic.Informers.Get(ctx, gvk, out)
 	if err != nil {
 		return err
@@ -67,6 +68,7 @@ func (ic *informerCache) Get(ctx context.Context, key client.ObjectKey, out clie
 	if !started {
 		return &ErrCacheNotStarted{}
 	}
+	// 从找到的 Cache 中读取对象
 	return cache.Reader.Get(ctx, key, out)
 }
 
